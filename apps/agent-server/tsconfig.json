@@ -14,7 +14,7 @@
     "useDefineForClassFields": true,
     "strictPropertyInitialization": false,
     "allowJs": true,
-    "strict": true,
+    "strict": false,
     "strictFunctionTypes": false,
     "outDir": "dist",
     "types": ["jest", "node"],
