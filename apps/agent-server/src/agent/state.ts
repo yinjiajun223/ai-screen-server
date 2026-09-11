@@ -1,5 +1,6 @@
 import { MessagesValue, StateSchema } from '@langchain/langgraph'
 import { z } from 'zod'
+import { ClassificationSchema } from './classification.js'
 
 export const State = new StateSchema({
   // MessagesValue 会保存对话消息，注意，这哥们会在节点返回消息时自动合并，而不是更新
@@ -16,4 +17,5 @@ export const State = new StateSchema({
     ),
     canvas: z.record(z.string(), z.json()),
   }),
+  classification: ClassificationSchema,
 })
