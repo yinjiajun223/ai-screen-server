@@ -18,4 +18,9 @@ export const State = new StateSchema({
     canvas: z.record(z.string(), z.json()),
   }),
   classification: ClassificationSchema,
+
+  action: z.object({
+    type: z.literal('add_node'),
+    node: z.record(z.string(), z.json()),
+  }),
 })

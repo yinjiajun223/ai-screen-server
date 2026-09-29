@@ -19,3 +19,13 @@ export function createChatModel(
     ...options,
   })
 }
+
+export function createNonStreamingModel(
+  options?: Parameters<typeof createChatModel>[0]
+) {
+  return createChatModel({
+    ...options,
+    disableStreaming: true,
+    tags: ['nostream'], // 这个节点不需要流式输出，直接返回最终结果即可
+  })
+}
