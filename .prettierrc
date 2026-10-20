@@ -3,5 +3,6 @@
   "singleQuote": true,
   "htmlWhitespaceSensitivity": "ignore",
   "trailingComma": "es5",
-  "arrowParens": "avoid"
+  "arrowParens": "avoid",
+  "printWidth": 130
 }

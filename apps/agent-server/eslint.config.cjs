@@ -82,6 +82,7 @@ module.exports = [
           capIsNew: false,
         },
       ],
+      '@typescript-eslint/no-explicit-any': 0,
     },
   }),
 ]

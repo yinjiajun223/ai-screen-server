@@ -20,7 +20,7 @@ export const State = new StateSchema({
   classification: ClassificationSchema,
 
   action: z.object({
-    type: z.literal('add_node'),
+    type: z.enum(['add_node', 'update_node']),
     node: z.record(z.string(), z.json()),
   }),
 })
