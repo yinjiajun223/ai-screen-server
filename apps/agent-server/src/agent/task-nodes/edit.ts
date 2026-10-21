@@ -1,45 +1,11 @@
 // 修改大屏内容
 
-import { AIMessage, SystemMessage } from '@langchain/core/messages'
+import { HumanMessage, SystemMessage } from '@langchain/core/messages'
 import { createNonStreamingModel } from '../../ai/model.js'
 import { literal, z } from 'zod'
+import { ActionTypeEnum } from './planEdit.js'
 
-const getMaterialSchema = async state => {
-  /**
-   * 获取到新增节点的 schema，包含节点的类型、内容和样式等信息。
-   * 1、用户提示词
-   * 2、所有物料 schema
-   */
-  const materialSchema = state.schema.material
-  const materials = state.schema.material.map(item => ({
-    type: item.type,
-    name: item.name,
-  }))
-
-  const model = createNonStreamingModel().withStructuredOutput(
-    z.object({
-      type: z.enum(materialSchema.map(m => m.type)).describe('新增节点的类型'),
-    }),
-    {
-      name: 'material_schema',
-      method: 'jsonSchema',
-    }
-  )
-
-  const res = await model.invoke([
-    new SystemMessage(`
-      你是一个 AI 大屏设计器的物料选择助手。
-      请根据用户的要求，从下面的可用物料中选择最合适的一个。
-      可用物料：
-      ${JSON.stringify(materials, null, 2)}
-    `),
-    ...state.messages,
-  ])
-
-  return state.schema.material.find(item => item.type === res.type)
-}
-
-const generateNode = async (state, materialSchema) => {
+const generateNode = async (materialSchema, prompt) => {
   /**
    * 根据用户的提示词结合 schema，生成一个新的节点对象。
    * 1、用户提示词
@@ -50,6 +16,7 @@ const generateNode = async (state, materialSchema) => {
   const model = createNonStreamingModel().withStructuredOutput(
     schema.extend({
       id: literal(crypto.randomUUID()).describe('新增节点的唯一标识符'),
+      type: literal(materialSchema.type).describe('新增节点的类型'),
     }),
     {
       name: 'generate_node',
@@ -64,11 +31,11 @@ const generateNode = async (state, materialSchema) => {
       必须遵守结构化输出 Schema。 
       对于可选属性，如果用户没有明确要求，可以留空。
     `),
-    ...state.messages,
+    new HumanMessage(prompt),
   ])
 }
 
-const updateNode = async (state, currentNode, materialSchema) => {
+const updateNode = async (currentNode, materialSchema, prompt) => {
   /**
    * 根据用户的提示词结合 schema，生成一个新的节点对象。
    * 1、用户提示词
@@ -94,7 +61,7 @@ const updateNode = async (state, currentNode, materialSchema) => {
 
       ${JSON.stringify(currentNode, null, 2)}
     `),
-    ...state.messages,
+    new HumanMessage(prompt),
   ])
 
   return {
@@ -105,47 +72,33 @@ const updateNode = async (state, currentNode, materialSchema) => {
 }
 
 export const handleEditTask = async state => {
-  if (state.classification.operation === 'add_node') {
-    /**
-     * 新增节点：
-     * 1. 获取到新增节点的 schema，包含节点的类型、内容和样式等信息。
-     * 2. 根据用户的提示词结合 schema，生成一个新的节点对象。
-     */
-    const schema = await getMaterialSchema(state) // 获取新增节点的 schema
+  const plans = state.editPlan
 
-    const node = await generateNode(state, schema) // 根据 schema 生成新的节点对象
-    return {
-      action: {
-        type: 'add_node',
-        node,
-      },
+  const actions = []
+  for (const plan of plans) {
+    const { action, id, type, prompt } = plan
+    const schema = state.schema.material.find(item => item.type === type)
+
+    if (action === ActionTypeEnum.ADD_NODE) {
+      // 新增节点
+      const node = await generateNode(schema, prompt) // 根据 schema 提示词 生成新的节点对象
+      actions.push({ node, type: ActionTypeEnum.ADD_NODE })
     }
-  } else if (state.classification.operation === 'update_node') {
-    /**
-     * 修改节点：
-     * 1. 获取到当前选中节点的 schema，包含节点的类型、内容和样式等信息。
-     * 2. 根据用户的提示词结合 schema，生成一个新的节点对象。
-     */
 
-    const selectedNodeId = state.selectedNodeIds[0]
-    if (!selectedNodeId)
-      return {
-        messages: [new AIMessage(`没有选中任何节点，请先选中一个节点再进行修改。`)],
-      }
+    const currentNode = state.page.nodes.find(node => node.id === id)
+    if (action === ActionTypeEnum.UPDATE_NODE) {
+      // 修改节点
+      const node = await updateNode(currentNode, schema, prompt)
+      actions.push({ node, type: ActionTypeEnum.UPDATE_NODE })
+    }
 
-    const currentNode = state.page.nodes.find(node => node.id === selectedNodeId)
-    const schema = state.schema.material.find(item => item.type === currentNode.type)
-
-    const node = (await updateNode(state, currentNode, schema)) as any // 根据 schema 生成新的节点对象
-
-    return {
-      action: {
-        type: 'update_node',
-        node,
-      },
+    if (action === ActionTypeEnum.REMOVE_NODE) {
+      // 删除节点 不需要调用大模型 通知前端删除就可以
+      actions.push({ node: currentNode, type: ActionTypeEnum.REMOVE_NODE })
     }
   }
+
   return {
-    messages: [new AIMessage(`接到任务：根据用户的需求，需要对当前画布进行修改。`)],
+    actions,
   }
 }

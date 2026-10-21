@@ -1,6 +1,6 @@
 import { END, START, StateGraph } from '@langchain/langgraph'
 import { State } from './state.js'
-import { handleEditTask, handleMessageTask, handlePageTask, handleEditorResult } from './task-nodes/index.js'
+import { handleEditTask, handleMessageTask, handlePageTask, handleEditorResult, handlePlanEdit } from './task-nodes/index.js'
 import { classifyTask } from './classification.js'
 
 const builder = new StateGraph(State)
@@ -8,15 +8,17 @@ const builder = new StateGraph(State)
   .addNode('handleMessageTask', handleMessageTask)
   .addNode('handlePageTask', handlePageTask)
   .addNode('handleEditTask', handleEditTask)
+  .addNode('handlePlanEdit', handlePlanEdit)
   .addNode('handleEditorResult', handleEditorResult)
   .addEdge(START, 'classifyTask')
   .addConditionalEdges('classifyTask', state => state.classification.task, {
     message: 'handleMessageTask',
     page: 'handlePageTask',
-    edit: 'handleEditTask',
+    edit: 'handlePlanEdit',
   })
   .addEdge('handleMessageTask', END)
   .addEdge('handlePageTask', END)
+  .addConditionalEdges('handlePlanEdit', state => (state.editPlan.length > 0 ? 'handleEditTask' : END))
   .addEdge('handleEditTask', 'handleEditorResult')
   .addEdge('handleEditorResult', END)
 
