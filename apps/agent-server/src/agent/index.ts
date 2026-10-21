@@ -1,10 +1,6 @@
 import { END, START, StateGraph } from '@langchain/langgraph'
 import { State } from './state.js'
-import {
-  handleEditTask,
-  handleMessageTask,
-  handlePageTask,
-} from './task-nodes/index.js'
+import { handleEditTask, handleMessageTask, handlePageTask, handleEditorResult } from './task-nodes/index.js'
 import { classifyTask } from './classification.js'
 
 const builder = new StateGraph(State)
@@ -12,6 +8,7 @@ const builder = new StateGraph(State)
   .addNode('handleMessageTask', handleMessageTask)
   .addNode('handlePageTask', handlePageTask)
   .addNode('handleEditTask', handleEditTask)
+  .addNode('handleEditorResult', handleEditorResult)
   .addEdge(START, 'classifyTask')
   .addConditionalEdges('classifyTask', state => state.classification.task, {
     message: 'handleMessageTask',
@@ -20,7 +17,8 @@ const builder = new StateGraph(State)
   })
   .addEdge('handleMessageTask', END)
   .addEdge('handlePageTask', END)
-  .addEdge('handleEditTask', END)
+  .addEdge('handleEditTask', 'handleEditorResult')
+  .addEdge('handleEditorResult', END)
 
 // 将图定义编译成可调用的 Runnable，供服务层执行或流式调用。
 export const graph = builder.compile()

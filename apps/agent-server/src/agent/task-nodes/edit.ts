@@ -3,7 +3,6 @@
 import { AIMessage, SystemMessage } from '@langchain/core/messages'
 import { createNonStreamingModel } from '../../ai/model.js'
 import { literal, z } from 'zod'
-import { getLastUserMessage } from '../../utils/index.js'
 
 const getMaterialSchema = async state => {
   /**
@@ -34,7 +33,7 @@ const getMaterialSchema = async state => {
       可用物料：
       ${JSON.stringify(materials, null, 2)}
     `),
-    getLastUserMessage(state.messages),
+    ...state.messages,
   ])
 
   return state.schema.material.find(item => item.type === res.type)
@@ -51,7 +50,6 @@ const generateNode = async (state, materialSchema) => {
   const model = createNonStreamingModel().withStructuredOutput(
     schema.extend({
       id: literal(crypto.randomUUID()).describe('新增节点的唯一标识符'),
-      message: z.string().describe('回复用户的信息，告诉用户修改成功了'),
     }),
     {
       name: 'generate_node',
@@ -66,7 +64,7 @@ const generateNode = async (state, materialSchema) => {
       必须遵守结构化输出 Schema。 
       对于可选属性，如果用户没有明确要求，可以留空。
     `),
-    getLastUserMessage(state.messages),
+    ...state.messages,
   ])
 }
 
@@ -78,15 +76,10 @@ const updateNode = async (state, currentNode, materialSchema) => {
    */
   const zodSchema = z.fromJSONSchema(materialSchema.configSchema) as z.ZodObject
 
-  const model = createNonStreamingModel().withStructuredOutput(
-    zodSchema.extend({
-      message: z.string().describe('回复用户的信息，告诉用户修改成功了'),
-    }),
-    {
-      name: 'material_node',
-      method: 'jsonSchema',
-    }
-  )
+  const model = createNonStreamingModel().withStructuredOutput(zodSchema, {
+    name: 'material_node',
+    method: 'jsonSchema',
+  })
 
   const res = await model.invoke([
     new SystemMessage(`
@@ -101,7 +94,7 @@ const updateNode = async (state, currentNode, materialSchema) => {
 
       ${JSON.stringify(currentNode, null, 2)}
     `),
-    getLastUserMessage(state.messages),
+    ...state.messages,
   ])
 
   return {
@@ -120,9 +113,8 @@ export const handleEditTask = async state => {
      */
     const schema = await getMaterialSchema(state) // 获取新增节点的 schema
 
-    const { message, ...node } = await generateNode(state, schema) // 根据 schema 生成新的节点对象
+    const node = await generateNode(state, schema) // 根据 schema 生成新的节点对象
     return {
-      messages: [new AIMessage(message || '节点新增成功')],
       action: {
         type: 'add_node',
         node,
@@ -144,10 +136,9 @@ export const handleEditTask = async state => {
     const currentNode = state.page.nodes.find(node => node.id === selectedNodeId)
     const schema = state.schema.material.find(item => item.type === currentNode.type)
 
-    const { message, ...node } = (await updateNode(state, currentNode, schema)) as any // 根据 schema 生成新的节点对象
+    const node = (await updateNode(state, currentNode, schema)) as any // 根据 schema 生成新的节点对象
 
     return {
-      messages: [new AIMessage(message || '节点修改成功')],
       action: {
         type: 'update_node',
         node,
