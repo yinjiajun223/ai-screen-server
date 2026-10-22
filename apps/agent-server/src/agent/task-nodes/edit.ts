@@ -12,27 +12,23 @@ const generateNode = async (materialSchema, prompt) => {
    * 2、物料 schema
    */
 
-  const schema = z.fromJSONSchema(materialSchema.configSchema) as z.ZodObject
-  const model = createNonStreamingModel().withStructuredOutput(
-    schema.extend({
-      id: literal(crypto.randomUUID()).describe('新增节点的唯一标识符'),
-      type: literal(materialSchema.type).describe('新增节点的类型'),
-    }),
-    {
-      name: 'generate_node',
-      method: 'jsonSchema',
-    }
-  )
+  const model = createNonStreamingModel().withStructuredOutput(materialSchema.configSchema, {
+    name: 'generate_node',
+    method: 'jsonSchema',
+  })
 
-  return await model.invoke([
+  const node = await model.invoke([
     new SystemMessage(`
       你是一个 AI 大屏设计器的节点生成助手。
       请根据用户要求生成一个完整的 ${materialSchema.name} 节点。
       必须遵守结构化输出 Schema。 
       对于可选属性，如果用户没有明确要求，可以留空。
+      如果是图表物料，使用的是 ECharts，props.option 必须使用 ECharts 的配置字段完成。
     `),
     new HumanMessage(prompt),
   ])
+
+  return { ...node, type: materialSchema.type, id: crypto.randomUUID() }
 }
 
 const updateNode = async (currentNode, materialSchema, prompt) => {
@@ -41,9 +37,8 @@ const updateNode = async (currentNode, materialSchema, prompt) => {
    * 1、用户提示词
    * 2、物料 schema
    */
-  const zodSchema = z.fromJSONSchema(materialSchema.configSchema) as z.ZodObject
 
-  const model = createNonStreamingModel().withStructuredOutput(zodSchema, {
+  const model = createNonStreamingModel().withStructuredOutput(materialSchema.configSchema, {
     name: 'material_node',
     method: 'jsonSchema',
   })
@@ -54,6 +49,7 @@ const updateNode = async (currentNode, materialSchema, prompt) => {
       当前选中的节点是 ${materialSchema.name}，请根据用户的要求修改该节点。
       必须遵守结构化输出 Schema。
       对于可选属性，如果用户没有明确要求，可以留空。
+      如果是图表物料，使用的是 ECharts，props.option 必须使用 ECharts 的配置字段完成。
 
       规则：
       - 只能修改当前节点的 props、layout、style 等属性，禁止修改节点的 type 和 id。
