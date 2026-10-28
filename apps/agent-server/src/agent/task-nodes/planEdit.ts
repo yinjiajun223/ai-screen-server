@@ -46,6 +46,7 @@ export const handlePlanEdit = async state => {
     id: item.id,
     name: item.name,
     type: item.type,
+    dataDescription: item.dataDescription,
   }))
 
   const model = createNonStreamingModel().withStructuredOutput(
@@ -79,6 +80,12 @@ export const handlePlanEdit = async state => {
       数据源规则：
       - 用户要创建、添加、准备一份静态数据或 API 数据源时使用 add_data_source，id 和 type 为 null。
       - 用户要修改已有数据源的名称、数据或 API 配置时使用 update_data_source；从已有数据源中复制真实 id，type 为 null。
+      - 用户要把已有数据源绑定、关联或应用到图表节点时使用 update_node，不要使用 update_data_source，也不要创建新的数据源。
+      - 绑定数据源时，必须从已有节点复制目标节点的真实 id 和 type，并在 prompt 中写明数据源的真实 id、name 和 dataDescription。
+      - 用户要根据已有数据源创建新图表时使用 add_node，id 为 null，type 为匹配的图表物料类型；在 prompt 中写明数据源的真实 id、name 和 dataDescription。
+      - 无论是绑定已有图表，还是根据已有数据源创建图表，prompt 都必须要求把数据源的真实 id 写入节点 dataId。
+      - 前端会根据节点 dataId 找到数据源，并将该数据源的 data 自动绑定到 ECharts 的 dataset.source；因此不要把完整数据复制到节点的 props.option.dataset.source。
+      - 若无法确定目标节点或目标数据源，返回空 editPlan，并通过 message 询问用户。
       - 若无法确定要修改哪一个数据源，返回空 editPlan，并通过 message 询问目标数据源。
       - 不要把数据源操作理解为节点操作；只有用户明确要求图表、文本、指标等画布物料时才使用节点操作。
       - 用户不需要使用固定格式，也不需要主动说明 JSON、字段名或数据行。

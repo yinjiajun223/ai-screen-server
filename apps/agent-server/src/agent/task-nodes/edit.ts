@@ -18,6 +18,18 @@ async function generateNode(materialSchema, prompt) {
       对于可选属性，如果用户没有明确要求，可以留空。
       如果是图表物料，使用的是 ECharts，props.option 必须使用 ECharts 的配置字段完成。
 
+      数据源绑定规则：
+      - 如果用户要求根据已有数据源创建图表，把提示词中给出的真实数据源 id 写入节点 dataId。
+      - 前端会根据 dataId 找到数据源，并将数据源的 data 自动绑定到 ECharts 的 dataset.source。
+      - 根据数据源的 dataDescription 使用真实字段设置 series.encode。
+      - 不要把数据源的完整数据写入 props.option.dataset.source。
+      - 柱状图的 series.type 为 bar，折线图的 series.type 为 line，面积图的 series.type 为 line 并设置 areaStyle；这三类图表必须生成 xAxis 和 yAxis，并将分类、名称或时间字段写入 encode.x，数值指标字段写入 encode.y。
+      - 饼图的 series.type 为 pie，将分类或名称字段写入 encode.itemName，数值指标字段写入 encode.value，不需要生成 xAxis 和 yAxis。
+      - 图表绑定对象数组数据源时，悬浮提示使用 tooltip.trigger 和 series.encode.tooltip 配置。
+      - 正常应该生成 tooltip，让它自动映射，但是不要生成 tooltip.formatter。
+      - 用户明确指定字段时以用户要求为准；否则根据 dataDescription 中的字段类型和业务含义推断。
+      - 只能使用 dataDescription 中真实存在的字段，不能编造字段名。
+
       如果需要确认 ECharts 配置字段、嵌套路径或字段含义，
       可以调用 search_echarts_options 查询 ECharts 官方配置。
     `,
@@ -52,8 +64,17 @@ async function updateNode(currentNode, materialSchema, prompt) {
       可以调用 search_echarts_options 查询 ECharts 官方配置。
 
       规则：
-       - 只能修改当前节点的 props、layout、style 等属性。
+       - 只能修改当前节点的 props、layout、style、dataId 等属性。
        - 禁止修改节点的 id、type 等属性。
+       - 如果用户要求绑定数据源，把数据源的真实 id 写入 dataId。
+       - 前端会根据 dataId 找到数据源，并将数据源的 data 自动绑定到 ECharts 的 dataset.source。
+       - 图表绑定数据源时，根据数据描述中的真实字段修改 series.encode；不要把数据源的完整数据写入 props.option.dataset.source。
+       - 柱状图的 series.type 为 bar，折线图的 series.type 为 line，面积图的 series.type 为 line 并设置 areaStyle；这三类图表必须包含 xAxis 和 yAxis，并使用 encode.x 和 encode.y。
+       - 饼图的 series.type 为 pie，使用 encode.itemName 和 encode.value，不需要生成 xAxis 和 yAxis。
+       - 图表绑定对象数组数据源时，悬浮提示使用 tooltip.trigger 和 series.encode.tooltip 配置。
+        - 正常应该生成 tooltip，让它自动映射，但是不要生成 tooltip.formatter。
+       - 用户明确指定字段时以用户要求为准；否则根据 dataDescription 中的字段类型和业务含义推断，且不能编造字段名。
+       - 除了完成绑定必须修改的 dataId 和 series.encode，保留节点其他配置。
 
       当前节点的内容：
 
