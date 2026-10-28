@@ -8,6 +8,7 @@ export const State = new StateSchema({
   messages: MessagesValue,
   page: z.record(z.string(), z.json()),
   selectedNodeIds: z.array(z.string()),
+  dataSources: z.array(z.record(z.string(), z.json())),
   schema: z.object({
     material: z.array(
       z.object({
@@ -17,15 +18,18 @@ export const State = new StateSchema({
       })
     ),
     canvas: z.record(z.string(), z.json()),
+    dataSource: z.record(z.string(), z.json()),
   }),
   classification: ClassificationSchema,
   editPlan: z.array(PlanEditSchema),
-  actions: z.array(
-    z.object({
-      type: ActionSchemaType,
-      node: z.record(z.string(), z.json()),
-    })
-  ).default([]),
+  actions: z
+    .array(
+      z.object({
+        type: ActionSchemaType,
+        node: z.record(z.string(), z.json()),
+      })
+    )
+    .default([]),
 })
 
 /**

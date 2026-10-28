@@ -4,6 +4,7 @@ import { createNonStreamingModel } from '../../ai/model.js'
 import { ActionTypeEnum } from './planEdit.js'
 import { createAgent, toolStrategy } from 'langchain'
 import { searchEChartsOptions } from '../../rag/tools.ts'
+import { generateDataSource, updateDataSource } from './dataSource.ts'
 
 async function generateNode(materialSchema, prompt) {
   const agent = createAgent({
@@ -97,6 +98,17 @@ export const handleEditTask = async state => {
     if (action === ActionTypeEnum.REMOVE_NODE) {
       // 删除节点 不需要调用大模型 通知前端删除就可以
       actions.push({ node: currentNode, type: ActionTypeEnum.REMOVE_NODE })
+    }
+
+    if (action === ActionTypeEnum.ADD_DATA_SOURCE) {
+      const dataSouce = await generateDataSource(prompt, state.schema.dataSource)
+      actions.push({ node: dataSouce, type: ActionTypeEnum.ADD_DATA_SOURCE })
+    }
+
+    if (action === ActionTypeEnum.UPDATE_DATA_SOURCE) {
+      const currentDataSource = state.dataSources.find(ds => ds.id === id)
+      const dataSouce = await updateDataSource(prompt, currentDataSource, state.schema.dataSource)
+      actions.push({ node: dataSouce, type: ActionTypeEnum.UPDATE_DATA_SOURCE })
     }
   }
 
