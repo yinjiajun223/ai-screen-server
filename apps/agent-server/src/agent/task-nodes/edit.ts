@@ -4,9 +4,54 @@ import { createNonStreamingModel } from '../../ai/model.js'
 import { ActionTypeEnum } from './planEdit.js'
 import { createAgent, toolStrategy } from 'langchain'
 import { searchEChartsOptions } from '../../rag/tools.ts'
-import { generateDataSource, updateDataSource } from './dataSource.ts'
 
-async function generateNode(materialSchema, prompt) {
+const getDataSourcePrompt = (prompt, state) => {
+  const taskDataSources = state.taskResource
+    .filter(item => [ActionTypeEnum.ADD_DATA_SOURCE, ActionTypeEnum.UPDATE_DATA_SOURCE].includes(item.type))
+    .map(item => item.node)
+
+  const dataSources = [...state.dataSources, ...taskDataSources].filter(item => prompt.includes(item.id))
+
+  if (dataSources.length > 0) {
+    return `
+       数据源绑定规则：
+        - 如果用户要求根据已有数据源创建图表，把提示词中给出的真实数据源 id 写入节点 dataId。
+        - 前端会根据 dataId 找到数据源，并将数据源的 data 自动绑定到 ECharts 的 dataset.source，禁止模型自动生成 dataset。除非用户明确要求生成 dataset。
+        - 根据数据源的 dataDescription 使用真实字段设置 series.encode。
+        - 不要把数据源的完整数据写入 props.option.dataset.source。
+        - 柱状图的 series.type 为 bar，折线图的 series.type 为 line，面积图的 series.type 为 line 并设置 areaStyle；这三类图表必须生成 xAxis 和 yAxis，并将分类、名称或时间字段写入 encode.x，数值指标字段写入 encode.y。
+        - 饼图的 series.type 为 pie，将分类或名称字段写入 encode.itemName，数值指标字段写入 encode.value，不需要生成 xAxis 和 yAxis。
+        - 图表绑定对象数组数据源时，悬浮提示使用 tooltip.trigger 和 series.encode.tooltip 配置。
+        - 正常应该生成 tooltip，让它自动映射，但是不要生成 tooltip.formatter。
+        - 用户明确指定字段时以用户要求为准；否则根据 dataDescription 中的字段类型和业务含义推断。
+        - 只能使用 dataDescription 中真实存在的字段，不能编造字段名。
+       
+  
+        当前任务依赖以下数据源：
+        ${JSON.stringify(dataSources, null, 2)}`
+  }
+
+  return ''
+}
+
+const getChartPrompt = schema => {
+  const type = schema.type
+
+  if (!type.includes('chart')) {
+    return ''
+  }
+
+  return `
+       如果是图表物料，使用的是 ECharts，props.option 必须使用 ECharts 的配置字段完成。
+      如果需要确认 ECharts 配置字段、嵌套路径或字段含义，
+      可以调用 search_echarts_options 查询 ECharts 官方配置。
+      
+      规则：
+      - 注意当前 Echarts 会自动使用 dataset 的方式绑定数据源，不要搞成老版本的 series.data 和 XAxis.data/YAxis.data 的方式。
+      `
+}
+
+async function generateNode(materialSchema, prompt, state) {
   const agent = createAgent({
     model: createNonStreamingModel(),
     tools: [searchEChartsOptions],
@@ -16,22 +61,9 @@ async function generateNode(materialSchema, prompt) {
       请根据用户要求生成一个完整的 ${materialSchema.name} 节点。
       必须遵守结构化输出 Schema。
       对于可选属性，如果用户没有明确要求，可以留空。
-      如果是图表物料，使用的是 ECharts，props.option 必须使用 ECharts 的配置字段完成。
 
-      数据源绑定规则：
-      - 如果用户要求根据已有数据源创建图表，把提示词中给出的真实数据源 id 写入节点 dataId。
-      - 前端会根据 dataId 找到数据源，并将数据源的 data 自动绑定到 ECharts 的 dataset.source。
-      - 根据数据源的 dataDescription 使用真实字段设置 series.encode。
-      - 不要把数据源的完整数据写入 props.option.dataset.source。
-      - 柱状图的 series.type 为 bar，折线图的 series.type 为 line，面积图的 series.type 为 line 并设置 areaStyle；这三类图表必须生成 xAxis 和 yAxis，并将分类、名称或时间字段写入 encode.x，数值指标字段写入 encode.y。
-      - 饼图的 series.type 为 pie，将分类或名称字段写入 encode.itemName，数值指标字段写入 encode.value，不需要生成 xAxis 和 yAxis。
-      - 图表绑定对象数组数据源时，悬浮提示使用 tooltip.trigger 和 series.encode.tooltip 配置。
-      - 正常应该生成 tooltip，让它自动映射，但是不要生成 tooltip.formatter。
-      - 用户明确指定字段时以用户要求为准；否则根据 dataDescription 中的字段类型和业务含义推断。
-      - 只能使用 dataDescription 中真实存在的字段，不能编造字段名。
-
-      如果需要确认 ECharts 配置字段、嵌套路径或字段含义，
-      可以调用 search_echarts_options 查询 ECharts 官方配置。
+      ${getDataSourcePrompt(prompt, state)}
+      ${getChartPrompt(materialSchema)}
     `,
   })
 
@@ -48,7 +80,7 @@ async function generateNode(materialSchema, prompt) {
   }
 }
 
-async function updateNode(currentNode, materialSchema, prompt) {
+async function updateNode(currentNode, materialSchema, prompt, state) {
   const agent = createAgent({
     model: createNonStreamingModel(),
     tools: [searchEChartsOptions],
@@ -64,17 +96,14 @@ async function updateNode(currentNode, materialSchema, prompt) {
       可以调用 search_echarts_options 查询 ECharts 官方配置。
 
       规则：
+       - 只能修改用户明确要求修改的属性，其他属性必须原样保留。不要擅自修改已有内容。
        - 只能修改当前节点的 props、layout、style、dataId 等属性。
        - 禁止修改节点的 id、type 等属性。
        - 如果用户要求绑定数据源，把数据源的真实 id 写入 dataId。
-       - 前端会根据 dataId 找到数据源，并将数据源的 data 自动绑定到 ECharts 的 dataset.source。
        - 图表绑定数据源时，根据数据描述中的真实字段修改 series.encode；不要把数据源的完整数据写入 props.option.dataset.source。
-       - 柱状图的 series.type 为 bar，折线图的 series.type 为 line，面积图的 series.type 为 line 并设置 areaStyle；这三类图表必须包含 xAxis 和 yAxis，并使用 encode.x 和 encode.y。
-       - 饼图的 series.type 为 pie，使用 encode.itemName 和 encode.value，不需要生成 xAxis 和 yAxis。
-       - 图表绑定对象数组数据源时，悬浮提示使用 tooltip.trigger 和 series.encode.tooltip 配置。
-        - 正常应该生成 tooltip，让它自动映射，但是不要生成 tooltip.formatter。
-       - 用户明确指定字段时以用户要求为准；否则根据 dataDescription 中的字段类型和业务含义推断，且不能编造字段名。
-       - 除了完成绑定必须修改的 dataId 和 series.encode，保留节点其他配置。
+
+      ${getDataSourcePrompt(prompt, state)}
+      ${getChartPrompt(materialSchema)}
 
       当前节点的内容：
 
@@ -96,44 +125,36 @@ async function updateNode(currentNode, materialSchema, prompt) {
 }
 
 export const handleEditTask = async state => {
-  const plans = state.editPlan
+  const index = state.currentTaskIndex
+  const task = state.editPlan[index]
 
-  const actions = []
-  for (const plan of plans) {
-    const { action, id, type, prompt } = plan
-    const schema = state.schema.material.find(item => item.type === type)
+  let node
+  const { action, id, type, prompt } = task
+  const schema = state.schema.material.find(item => item.type === type)
 
-    if (action === ActionTypeEnum.ADD_NODE) {
-      // 新增节点
-      const node = await generateNode(schema, prompt) // 根据 schema 提示词 生成新的节点对象
-      actions.push({ node, type: ActionTypeEnum.ADD_NODE })
-    }
+  if (action === ActionTypeEnum.ADD_NODE) {
+    // 新增节点
+    node = await generateNode(schema, prompt, state) // 根据 schema 提示词 生成新的节点对象
+  }
 
-    const currentNode = state.page.nodes.find(node => node.id === id)
-    if (action === ActionTypeEnum.UPDATE_NODE) {
-      // 修改节点
-      const node = await updateNode(currentNode, schema, prompt)
-      actions.push({ node, type: ActionTypeEnum.UPDATE_NODE })
-    }
+  const currentNode = state.page.nodes.find(node => node.id === id)
+  if (action === ActionTypeEnum.UPDATE_NODE) {
+    // 修改节点
+    node = await updateNode(currentNode, schema, prompt, state) // 根据 schema 提示词 修改已有节点对象
+  }
 
-    if (action === ActionTypeEnum.REMOVE_NODE) {
-      // 删除节点 不需要调用大模型 通知前端删除就可以
-      actions.push({ node: currentNode, type: ActionTypeEnum.REMOVE_NODE })
-    }
+  if (action === ActionTypeEnum.REMOVE_NODE) {
+    node = currentNode
+  }
 
-    if (action === ActionTypeEnum.ADD_DATA_SOURCE) {
-      const dataSouce = await generateDataSource(prompt, state.schema.dataSource)
-      actions.push({ node: dataSouce, type: ActionTypeEnum.ADD_DATA_SOURCE })
-    }
-
-    if (action === ActionTypeEnum.UPDATE_DATA_SOURCE) {
-      const currentDataSource = state.dataSources.find(ds => ds.id === id)
-      const dataSouce = await updateDataSource(prompt, currentDataSource, state.schema.dataSource)
-      actions.push({ node: dataSouce, type: ActionTypeEnum.UPDATE_DATA_SOURCE })
-    }
+  const actionTask = {
+    type: action,
+    node,
   }
 
   return {
-    actions,
+    taskResource: [...state.taskResource, actionTask],
+    actions: [actionTask],
+    currentTaskIndex: index + 1,
   }
 }

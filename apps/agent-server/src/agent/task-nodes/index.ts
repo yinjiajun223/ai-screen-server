@@ -3,4 +3,4 @@ export { handlePageTask } from './page.js'
 export { handleEditTask } from './edit.js'
 export { handleEditorResult } from './editorResult.js'
 export { handlePlanEdit } from './planEdit.js'
-
+export { handleDataSourceTask } from './dataSource.js'

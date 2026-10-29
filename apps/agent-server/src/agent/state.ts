@@ -3,6 +3,11 @@ import { z } from 'zod'
 import { ClassificationSchema } from './classification.js'
 import { ActionSchemaType, PlanEditSchema } from './task-nodes/planEdit.js'
 
+const Action = z.object({
+  type: ActionSchemaType,
+  node: z.record(z.string(), z.json()),
+})
+
 export const State = new StateSchema({
   // MessagesValue 会保存对话消息，注意，这哥们会在节点返回消息时自动合并，而不是更新
   messages: MessagesValue,
@@ -22,14 +27,9 @@ export const State = new StateSchema({
   }),
   classification: ClassificationSchema,
   editPlan: z.array(PlanEditSchema),
-  actions: z
-    .array(
-      z.object({
-        type: ActionSchemaType,
-        node: z.record(z.string(), z.json()),
-      })
-    )
-    .default([]),
+  actions: z.array(Action).default([]),
+  currentTaskIndex: z.number().default(0),
+  taskResource: z.array(Action).default([]),
 })
 
 /**

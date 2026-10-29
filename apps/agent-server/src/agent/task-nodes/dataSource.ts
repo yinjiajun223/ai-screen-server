@@ -1,7 +1,9 @@
 import { HumanMessage, SystemMessage } from '@langchain/core/messages'
 import { createNonStreamingModel } from '../../ai/model.js'
+import { ActionTypeEnum } from './planEdit.ts'
 
-export async function generateDataSource(prompt: string, dataSourceJsonSchema) {
+export async function generateDataSource(prompt: string, state, id) {
+  const dataSourceJsonSchema = state.schema.dataSource
   const model = createNonStreamingModel().withStructuredOutput(dataSourceJsonSchema, {
     name: 'data_source',
     method: 'jsonSchema',
@@ -38,7 +40,7 @@ export async function generateDataSource(prompt: string, dataSourceJsonSchema) {
     new HumanMessage(prompt),
   ])
 
-  return { ...data, id: crypto.randomUUID() }
+  return { ...data, id }
 }
 
 export async function updateDataSource(prompt: string, currentDataSource: Record<string, unknown>, dataSourceJsonSchema) {
@@ -67,5 +69,32 @@ export async function updateDataSource(prompt: string, currentDataSource: Record
   return {
     ...data,
     id: currentDataSource.id,
+  }
+}
+
+export const handleDataSourceTask = async state => {
+  const index = state.currentTaskIndex
+  const task = state.editPlan[index]
+
+  let node
+  const { action, id, prompt } = task
+  if (action === ActionTypeEnum.ADD_DATA_SOURCE) {
+    node = await generateDataSource(prompt, state, id)
+  }
+
+  if (action === ActionTypeEnum.UPDATE_DATA_SOURCE) {
+    const currentDataSource = state.dataSources.find(ds => ds.id === id)
+    node = await updateDataSource(prompt, currentDataSource, state.schema.dataSource)
+  }
+
+  const actionTask = {
+    type: action,
+    node,
+  }
+
+  return {
+    taskResource: [...state.taskResource, actionTask],
+    actions: [actionTask],
+    currentTaskIndex: index + 1,
   }
 }
